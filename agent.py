@@ -22,12 +22,12 @@ class Agent():
         while True:
             if action_type == "policy": 
                 with torch.no_grad():
-                    policy, _ = self.ac(state.unsqueeze(0))
+                    policy, _ = self.ac(state)
                     action = torch.argmax(policy).item()
                     # print(action)
                 next_state, reward, done = wrapper.step(action)
             elif action_type == "random":
-                next_state, reward, done = wrapper.step(wrapper.env.action_space.sample())
+                next_state, reward, done = wrapper.step(wrapper.envs.action_space.sample())
 
             total_reward += reward
             cv2.imshow('Breakout Agent', state[:1, :, :].cpu().numpy().reshape((84, 84)))
@@ -55,83 +55,86 @@ class Agent():
 
         state = wrapper.reset().to(self.device)
         for _ in range(n_steps):
-            state_tensor = state.unsqueeze(0)  # (1, C, H, W)
             with torch.no_grad():
-                probs, value = self.ac(state_tensor)
-
+                probs, value = self.ac(state)
             distribution = torch.distributions.Categorical(probs)
             action = distribution.sample()
-            log_prob = torch.log(probs.squeeze(0)[action])
-            next_state, reward, done = wrapper.step(action.item())
+            log_prob = torch.log(probs.gather(1, action.unsqueeze(1)).squeeze(1))
+            next_state, reward, done = wrapper.step(action)
 
             states_list.append(state)
             actions_list.append(action)
             log_probs_list.append(log_prob)
             rewards_list.append(reward)
-            values_list.append(value.item())
+            values_list.append(value)
 
             state = next_state.to(self.device)
 
-            if done:
+            # stop if any of the trajectories is done
+            # we want all the lists to be retangular
+            if done.any():
                 state = wrapper.reset().to(self.device)
                 break
 
         with torch.no_grad():
-            _, final_value = self.ac(state.unsqueeze(0))
-            final_value = final_value.item()
+            _, final_value = self.ac(state)
         values_list.append(final_value)
+        
+        states_list = torch.stack(states_list).to(self.device)
+        actions_list = torch.stack(actions_list).to(self.device)
+        rewards_list = torch.stack(rewards_list).to(self.device)
+        log_probs_list = torch.stack(log_probs_list).to(self.device)
+        values_list = torch.stack(values_list).to(self.device)
 
         return states_list, actions_list, rewards_list, log_probs_list, values_list
 
     def compute_gae(self, rewards, values, lam, gamma):
-        # print(rewards)
-        # print(values)
-        # breakpoint()
-        advantages = np.zeros_like(rewards, dtype=np.float32)
+        advantages = torch.zeros_like(rewards)
         last_gae = 0
         for i in reversed(range(len(rewards))): 
             delta = rewards[i] + gamma * values[i + 1] - values[i]
             advantages[i] = last_gae = delta + gamma * lam * last_gae
-        returns = advantages + np.array(values[:-1])
-        # returns = (returns - returns.mean()) / (returns.std() + 1e-8)
+        returns = advantages + values[:-1]
         return advantages, returns  
 
     def compute_entropy(self, probs):
-        return -torch.sum(probs * torch.log(probs + 1e-8))
+        # breakpoint()
+        return -torch.sum(probs * torch.log(probs + 1e-8), dim=1).mean()
     
     def compute_log_probs(self, probs, actions):
+        # The below two lines are equivalent to this: torch.log(probs.gather(1, actions.unsqueeze(1)).squeeze(1))
         dist = torch.distributions.Categorical(probs)
         return dist.log_prob(actions)
 
     def train(self, old_states, old_actions, old_log_probs, advantages, returns, epsilon=0.2, beta=0.01, c1=0.5):
-        old_states = torch.stack(old_states).to(self.device)            # Shape: (T, C, H, W)
-        old_actions = torch.stack(old_actions).to(self.device)          # Shape: (T,)
-        old_log_probs = torch.stack(old_log_probs).to(self.device)      # Shape: (T,)
-        advantages = torch.tensor(advantages, dtype=torch.float32, device=self.device)
-        returns = torch.tensor(returns, dtype=torch.float32, device=self.device)
-
         advantages = (advantages - advantages.mean()) / (advantages.std() + 1e-8)
         # total_loss = 0
         dataset_size = old_states.shape[0]
-        batch_size = 32  # Feel free to tune this
+        batch_size = 64  # Feel free to tune this
         for _ in range(NUM_EPOCHS):
             indices = torch.randperm(dataset_size)
             for start in range(0, dataset_size, batch_size):
                 end = start + batch_size
                 minibatch_idx = indices[start:end]
 
-                states_mb = old_states[minibatch_idx]
-                actions_mb = old_actions[minibatch_idx]
+                old_states_mb = old_states[minibatch_idx]
+                old_actions_mb = old_actions[minibatch_idx]
                 old_log_probs_mb = old_log_probs[minibatch_idx]
                 returns_mb = returns[minibatch_idx]
                 advantages_mb = advantages[minibatch_idx]
 
-                probs, values = self.ac(states_mb)
+                old_states_mb = old_states_mb.reshape(-1, *old_states_mb.shape[2:])
+                old_actions_mb = old_actions_mb.reshape(-1)
+                old_log_probs_mb = old_log_probs_mb.reshape(-1)
+                returns_mb = returns_mb.reshape(-1)
+                advantages_mb = advantages_mb.reshape(-1)
+
+                probs, values = self.ac(old_states_mb)
                 # dist = torch.distributions.Categorical(probs)
                 # log_probs = dist.log_prob(actions_mb)
                 # entropy = dist.entropy().mean()
                 entropy = self.compute_entropy(probs)
-                log_probs = self.compute_log_probs(probs, actions_mb)
+                log_probs = self.compute_log_probs(probs, old_actions_mb)
                 # PPO clipped surrogate loss
                 ratio = torch.exp(log_probs - old_log_probs_mb)
                 clipped_ratio = torch.clamp(ratio, 1 - epsilon, 1 + epsilon)

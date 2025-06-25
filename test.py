@@ -15,7 +15,9 @@ ac = ActorCritic().to(device)
 agent = Agent(ac, device)
 losses = []
 
+# agent.play(pong, action_type="random")
 
+# breakpoint()
 # PPO training loop
 for update in tqdm(range(500)):
     # Collect trajectories
@@ -24,12 +26,13 @@ for update in tqdm(range(500)):
     advantages, returns = agent.compute_gae(rewards, values, lam=0.95, gamma=0.99)
     # Train the actor-critic networks
     total_reward = sum(rewards)/len(rewards)
+
     loss = agent.train(states, actions, log_probs, advantages, returns)
     losses.append(loss)
     # Log and visualize
     if update % 10 == 0:
         print(f"=== Update {update} ===")
-        print("Total reward: ", total_reward)
+        print("Total reward: ", total_reward.mean())
 
 agent.play(pong, action_type="policy")
 
