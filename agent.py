@@ -111,6 +111,7 @@ class Agent():
         # total_loss = 0
         dataset_size = old_states.shape[0]
         batch_size = 64  # Feel free to tune this
+        
         for _ in range(NUM_EPOCHS):
             indices = torch.randperm(dataset_size)
             for start in range(0, dataset_size, batch_size):
@@ -150,4 +151,4 @@ class Agent():
                 total_loss.backward()
                 self.ac_optimizer.step()
         print("Mean AC loss:", total_loss.item())
-        return total_loss.item()
+        return advantages_mb.mean().item(), entropy.item(), log_probs.mean().item(), ratio.mean().item(), clipped_ratio.mean().item(), actor_loss.item(), critic_loss.item(), total_loss.item() 
