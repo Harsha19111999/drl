@@ -57,9 +57,9 @@ class Agent():
         for _ in range(n_steps):
             with torch.no_grad():
                 probs, value = self.ac(state)
-            distribution = torch.distributions.Categorical(probs)
+            distribution = torch.distributions.Categorical(logits=probs)
             action = distribution.sample()
-            log_prob = torch.log(probs.gather(1, action.unsqueeze(1)).squeeze(1))
+            log_prob = distribution.log_prob(action)
             next_state, reward, done = wrapper.step(action)
 
             states_list.append(state)
@@ -103,7 +103,7 @@ class Agent():
     
     def compute_log_probs(self, probs, actions):
         # The below two lines are equivalent to this: torch.log(probs.gather(1, actions.unsqueeze(1)).squeeze(1))
-        dist = torch.distributions.Categorical(probs)
+        dist = torch.distributions.Categorical(logits=probs)
         return dist.log_prob(actions)
 
     def train(self, old_states, old_actions, old_log_probs, advantages, returns, epsilon=0.2, beta=0.01, c1=0.5):
@@ -129,13 +129,13 @@ class Agent():
                 old_log_probs_mb = old_log_probs_mb.reshape(-1)
                 returns_mb = returns_mb.reshape(-1)
                 advantages_mb = advantages_mb.reshape(-1)
-
                 probs, values = self.ac(old_states_mb)
-                # dist = torch.distributions.Categorical(probs)
-                # log_probs = dist.log_prob(actions_mb)
-                # entropy = dist.entropy().mean()
-                entropy = self.compute_entropy(probs)
-                log_probs = self.compute_log_probs(probs, old_actions_mb)
+                dist = torch.distributions.Categorical(logits=probs)
+                log_probs = dist.log_prob(old_actions_mb)
+                entropy = dist.entropy().mean()
+                # breakpoint()
+                # entropy = self.compute_entropy(probs)
+                # log_probs = self.compute_log_probs(probs, old_actions_mb)
                 # PPO clipped surrogate loss
                 ratio = torch.exp(log_probs - old_log_probs_mb)
                 clipped_ratio = torch.clamp(ratio, 1 - epsilon, 1 + epsilon)
@@ -145,8 +145,8 @@ class Agent():
                 critic_loss = F.mse_loss(values.squeeze(), returns_mb)
 
                 # Combined loss
-                total_loss = actor_loss + c1 * critic_loss - beta * entropy
-
+                total_loss = actor_loss + c1 * critic_loss 
+                # breakpoint()
                 self.ac_optimizer.zero_grad()
                 total_loss.backward()
                 self.ac_optimizer.step()

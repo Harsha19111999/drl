@@ -1,7 +1,7 @@
 import numpy as np
 import torch.nn as nn
 import torch.nn.functional as F
-
+import torch
 '''
 The input to the neural network consists is an 84 × 84 × 4 image produced by φ. The first hidden layer convolves 16 8 × 8 filters with stride 4 with the input image 
 and applies a rectifier nonlinearity [10, 18]. The second hidden layer convolves 32 4 × 4 filters with stride 2, again followed by a rectifier nonlinearity. The
@@ -26,5 +26,6 @@ class ActorCritic(nn.Module):
         x = F.relu(self.conv3(x))  # -> (B, 64, 7, 7)
         x = x.view(x.size(0), -1)  # Flatten
         x = F.relu(self.fc(x))     # Shared dense layer
-        return F.softmax(self.actor(x), dim=-1), self.critic(x).squeeze(-1) # Make sure softmax dims are correct
+        # print(torch.clamp(self.actor(x), -10, 10))
+        return torch.clamp(self.actor(x), -10, 10), self.critic(x).squeeze(-1) # Make sure softmax dims are correct
         

@@ -11,8 +11,10 @@ import matplotlib.pyplot as plt
 pong = GymWrapper('BreakoutNoFrameskip-v4')
 device = torch.device("cuda:0" if torch.cuda.is_available() else "cpu")
 print(device)
-ac = ActorCritic().to(device)
+ac = ActorCritic()
+ac = torch.nn.DataParallel(ac)
 agent = Agent(ac, device)
+
 
 advantages_list = []
 entropy_list = []
@@ -27,14 +29,13 @@ total_loss_list = []
 
 # breakpoint()
 # PPO training loop
-for update in tqdm(range(1)):
+for update in tqdm(range(1000)):
     # Collect trajectories
     states, actions, rewards, log_probs, values = agent.collect_trajectories(pong, n_steps=2048)
     # Compute advantages and returns
     advantages, returns = agent.compute_gae(rewards, values, lam=0.95, gamma=0.99)
     # Train the actor-critic networks
     total_reward = sum(rewards)/len(rewards)
-
     advantages, entropy, log_probs, ratio, clipped_ratio, actor_loss, critic_loss, total_loss = agent.train(states, actions, log_probs, advantages, returns)
     advantages_list.append(advantages)
     entropy_list.append(entropy)
