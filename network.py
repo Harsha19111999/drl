@@ -27,5 +27,5 @@ class ActorCritic(nn.Module):
         x = x.view(x.size(0), -1)  # Flatten
         x = F.relu(self.fc(x))     # Shared dense layer
         # print(torch.clamp(self.actor(x), -10, 10))
-        return torch.clamp(self.actor(x), -10, 10), self.critic(x).squeeze(-1) # Make sure softmax dims are correct
+        return F.softmax(self.actor(x), dim=-1), self.critic(x).squeeze(-1) # Make sure softmax dims are correct
         

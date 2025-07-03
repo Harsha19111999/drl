@@ -46,6 +46,37 @@ class Agent():
         # print(stacked.shape)
         # imageio.mimsave('output.gif', stacked, fps=1)
     
+    def save_states_gif(self, states_list, save_path="trajectories.gif"):
+        """
+        states_list: tensor of shape [T, num_envs, C, H, W]
+        save_path: path to save gif
+        """
+        # Move to CPU and convert to numpy
+        states_np = states_list.cpu().numpy()
+        T, num_envs, C, H, W = states_np.shape
+
+        frames = []
+
+        for t in range(T):
+            # Collect each env's last channel frame
+            env_frames = []
+            for env_idx in range(num_envs):
+                frame = states_np[t, env_idx, -1, :, :]  # Take last channel (assuming grayscale)
+                frame = (frame * 255).astype(np.uint8)   # Convert to 0–255 if not already
+                env_frames.append(frame)
+
+            # Concatenate all env frames horizontally
+            combined_frame = np.concatenate(env_frames, axis=1)  # Shape: (H, num_envs * W)
+
+            # Convert single-channel to RGB for GIF
+            combined_frame_rgb = np.stack([combined_frame]*3, axis=-1)  # Shape: (H, W_total, 3)
+
+            frames.append(combined_frame_rgb)
+
+        # Write GIF
+        imageio.mimsave(save_path, frames, fps=5)
+        print(f"Saved GIF to {save_path}")
+    
     def collect_trajectories(self, wrapper, n_steps=200):
         states_list = []
         actions_list = []
@@ -57,7 +88,7 @@ class Agent():
         for _ in range(n_steps):
             with torch.no_grad():
                 probs, value = self.ac(state)
-            distribution = torch.distributions.Categorical(logits=probs)
+            distribution = torch.distributions.Categorical(probs)
             action = distribution.sample()
             log_prob = distribution.log_prob(action)
             next_state, reward, done = wrapper.step(action)
@@ -74,12 +105,13 @@ class Agent():
             # we want all the lists to be retangular
             if done.any():
                 state = wrapper.reset().to(self.device)
-                break
+                fire_action = torch.tensor([1]*8).to(self.device)
+                state, _, _ = wrapper.step(fire_action)
+                state = state.to(self.device)
 
         with torch.no_grad():
             _, final_value = self.ac(state)
         values_list.append(final_value)
-        
         states_list = torch.stack(states_list).to(self.device)
         actions_list = torch.stack(actions_list).to(self.device)
         rewards_list = torch.stack(rewards_list).to(self.device)
@@ -95,6 +127,7 @@ class Agent():
             delta = rewards[i] + gamma * values[i + 1] - values[i]
             advantages[i] = last_gae = delta + gamma * lam * last_gae
         returns = advantages + values[:-1]
+        # breakpoint()
         return advantages, returns  
 
     def compute_entropy(self, probs):
@@ -103,14 +136,14 @@ class Agent():
     
     def compute_log_probs(self, probs, actions):
         # The below two lines are equivalent to this: torch.log(probs.gather(1, actions.unsqueeze(1)).squeeze(1))
-        dist = torch.distributions.Categorical(logits=probs)
+        dist = torch.distributions.Categorical(probs)
         return dist.log_prob(actions)
 
-    def train(self, old_states, old_actions, old_log_probs, advantages, returns, epsilon=0.2, beta=0.01, c1=0.5):
-        advantages = (advantages - advantages.mean()) / (advantages.std() + 1e-8)
+    def train(self, old_states, old_actions, old_log_probs, advantages, returns, epsilon=0.2, beta=0.01, c1=1):
+        # advantages = (advantages - advantages.mean()) / (advantages.std() + 1e-8)
         # total_loss = 0
         dataset_size = old_states.shape[0]
-        batch_size = 64  # Feel free to tune this
+        batch_size = 256  # Feel free to tune this
         
         for _ in range(NUM_EPOCHS):
             indices = torch.randperm(dataset_size)
@@ -130,7 +163,7 @@ class Agent():
                 returns_mb = returns_mb.reshape(-1)
                 advantages_mb = advantages_mb.reshape(-1)
                 probs, values = self.ac(old_states_mb)
-                dist = torch.distributions.Categorical(logits=probs)
+                dist = torch.distributions.Categorical(probs)
                 log_probs = dist.log_prob(old_actions_mb)
                 entropy = dist.entropy().mean()
                 # breakpoint()
@@ -143,12 +176,14 @@ class Agent():
 
                 # Critic loss
                 critic_loss = F.mse_loss(values.squeeze(), returns_mb)
+                # breakpoint()
 
                 # Combined loss
-                total_loss = actor_loss + c1 * critic_loss 
+                total_loss = actor_loss + c1 * critic_loss - beta * entropy
                 # breakpoint()
                 self.ac_optimizer.zero_grad()
                 total_loss.backward()
+                torch.nn.utils.clip_grad_norm_(self.ac.parameters(), 0.5)
                 self.ac_optimizer.step()
         print("Mean AC loss:", total_loss.item())
         return advantages_mb.mean().item(), entropy.item(), log_probs.mean().item(), ratio.mean().item(), clipped_ratio.mean().item(), actor_loss.item(), critic_loss.item(), total_loss.item() 

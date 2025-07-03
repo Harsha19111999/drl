@@ -7,7 +7,7 @@ import torch
 class GymWrapper():
     def __init__(self, env_name, history_length=4, obs_type="grayscale"):
         gym.register_envs(ale_py)
-        self.envs = gym.make_vec(env_name, num_envs=16, vectorization_mode="sync", obs_type=obs_type)
+        self.envs = gym.make_vec(env_name, num_envs=8, vectorization_mode="sync", obs_type=obs_type)
         self.history_length = history_length
         self.state = None
         
