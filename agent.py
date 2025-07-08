@@ -92,7 +92,7 @@ class Agent():
             action = distribution.sample()
             log_prob = distribution.log_prob(action)
             next_state, reward, done = wrapper.step(action)
-
+            
             states_list.append(state)
             actions_list.append(action)
             log_probs_list.append(log_prob)
@@ -139,8 +139,8 @@ class Agent():
         dist = torch.distributions.Categorical(probs)
         return dist.log_prob(actions)
 
-    def train(self, old_states, old_actions, old_log_probs, advantages, returns, epsilon=0.2, beta=0.01, c1=1):
-        # advantages = (advantages - advantages.mean()) / (advantages.std() + 1e-8)
+    def train(self, old_states, old_actions, old_log_probs, advantages, returns, epsilon=0.1, beta=0.01, c1=1):
+        advantages = (advantages - advantages.mean()) / (advantages.std() + 1e-8)
         # total_loss = 0
         dataset_size = old_states.shape[0]
         batch_size = 256  # Feel free to tune this
@@ -161,11 +161,12 @@ class Agent():
                 old_actions_mb = old_actions_mb.reshape(-1)
                 old_log_probs_mb = old_log_probs_mb.reshape(-1)
                 returns_mb = returns_mb.reshape(-1)
+                
                 advantages_mb = advantages_mb.reshape(-1)
                 probs, values = self.ac(old_states_mb)
                 dist = torch.distributions.Categorical(probs)
                 log_probs = dist.log_prob(old_actions_mb)
-                entropy = dist.entropy().mean()
+                entropy = (dist.entropy()).mean()
                 # breakpoint()
                 # entropy = self.compute_entropy(probs)
                 # log_probs = self.compute_log_probs(probs, old_actions_mb)
@@ -180,10 +181,12 @@ class Agent():
 
                 # Combined loss
                 total_loss = actor_loss + c1 * critic_loss - beta * entropy
+
                 # breakpoint()
                 self.ac_optimizer.zero_grad()
                 total_loss.backward()
-                torch.nn.utils.clip_grad_norm_(self.ac.parameters(), 0.5)
+                # torch.nn.utils.clip_grad_norm_(self.ac.parameters(), 0.5)
                 self.ac_optimizer.step()
+        print(returns_mb.mean())
         print("Mean AC loss:", total_loss.item())
         return advantages_mb.mean().item(), entropy.item(), log_probs.mean().item(), ratio.mean().item(), clipped_ratio.mean().item(), actor_loss.item(), critic_loss.item(), total_loss.item() 
