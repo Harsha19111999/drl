@@ -47,7 +47,7 @@ except FileNotFoundError:
     print(f"No checkpoint found at {checkpoint_path}, starting fresh.")
 
 
-for update in tqdm(range(start_update, 40000)):
+for update in tqdm(range(start_update, 1)):
     # Collect trajectories
     states, actions, rewards, log_probs, values = agent.collect_trajectories(breakout, n_steps=2048)
     # Compute advantages and returns
@@ -85,7 +85,7 @@ for update in tqdm(range(start_update, 40000)):
         print(f"Checkpoint saved at update {update}")
 
 
-# agent.play(pong, action_type="policy")
+agent.play(breakout, action_type="policy")
 
 fig, axs = plt.subplots(2, 4, figsize=(20, 8))
 axs = axs.flatten()  # Flatten to simplify indexing

@@ -16,6 +16,7 @@ class Agent():
         
     def play(self, wrapper, action_type):
         state = wrapper.reset().to(self.device)
+        breakpoint()
         total_reward = 0
         cv2.namedWindow('Breakout Agent', cv2.WINDOW_NORMAL)
         cv2.resizeWindow('Breakout Agent', 800, 800)
@@ -23,7 +24,7 @@ class Agent():
             if action_type == "policy": 
                 with torch.no_grad():
                     policy, _ = self.ac(state)
-                    action = torch.argmax(policy).item()
+                    action = torch.argmax(policy, axis=1)
                     # print(action)
                 next_state, reward, done = wrapper.step(action)
             elif action_type == "random":
