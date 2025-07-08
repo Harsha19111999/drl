@@ -9,6 +9,10 @@ def process_image(frame, shape=(84, 84)):
     # Crop the image to focus on the playing area (Breakout typically crops a bit from top and bottom)
     # Adjust cropping if necessary; here's a common choice:
     # (NUM_ENV, HEIGHT, WIDTH) CHW
+    grayscale_frames = []
+    for i in range(frame.shape[0]):
+        grayscale_frames.append(cv2.cvtColor(frame[i, :, :, :], cv2.COLOR_RGB2GRAY))
+    frame = np.array(grayscale_frames)
     frame = frame[:, 30:195, :]  # crop vertical from 30 to 195 pixels, keep full width
     frame = np.transpose(frame, (1, 2, 0)) # Open CV expected in HWC 
     # Resize the cropped frame

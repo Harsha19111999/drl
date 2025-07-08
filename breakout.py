@@ -8,7 +8,7 @@ import numpy as np
 import matplotlib.pyplot as plt
 
 # Initialize environment, networks, agent, and optimizers
-pong = GymWrapper('BreakoutNoFrameskip-v4')
+breakout = GymWrapper('BreakoutNoFrameskip-v4')
 device = torch.device("cuda:0" if torch.cuda.is_available() else "cpu")
 print(device)
 ac = ActorCritic()
@@ -49,7 +49,7 @@ except FileNotFoundError:
 
 for update in tqdm(range(start_update, 40000)):
     # Collect trajectories
-    states, actions, rewards, log_probs, values = agent.collect_trajectories(pong, n_steps=2048)
+    states, actions, rewards, log_probs, values = agent.collect_trajectories(breakout, n_steps=2048)
     # Compute advantages and returns
     advantages, returns = agent.compute_gae(rewards, values, lam=0.95, gamma=0.99)
     # Train the actor-critic networks

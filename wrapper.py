@@ -6,13 +6,13 @@ from stable_baselines3.common.atari_wrappers import MaxAndSkipEnv
 import ale_py
 
 class GymWrapper():
-    def __init__(self, env_name, history_length=4, obs_type="grayscale"):
+    def __init__(self, env_name, history_length=4):
         self.history_length = history_length
 
         # Function to create a single wrapped environment
         def make_env():
             gym.register_envs(ale_py)
-            base_env = gym.make(env_name, obs_type=obs_type, render_mode=None)
+            base_env = gym.make(env_name, render_mode=None)
             env = MaxAndSkipEnv(base_env, skip=4)
             return env
 
